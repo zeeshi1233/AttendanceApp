@@ -59,14 +59,12 @@ router.post('/signup', upload.single('pic'), async (req, res) => {
       const newUser = new User({ name, email, password: hashPass });
       const savedUser = await newUser.save();
 
-      // Upload the image to Cloudinary using the MongoDB ID as the public ID
+   
       const result = await cloudinary.v2.uploader.upload(req.file.path, {
           public_id: savedUser._id.toString(), // Using MongoDB ID as the public ID
       });
 
       const userPic = result.secure_url;
-
-      // Update the user's pic field with the Cloudinary URL
       savedUser.pic = userPic;
       await savedUser.save();
 
