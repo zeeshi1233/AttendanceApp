@@ -17,7 +17,6 @@ cloudinary.config({
 
 const userSchema = Joi.object({
     name: Joi.string().required(),
-    pic: Joi.string().required(),
     email: Joi.string().required(),
     password: Joi.string().required().min(6),
 })
@@ -40,44 +39,62 @@ app.use(express.json());
 
 // Signup Api
 
-router.post('/signup',upload.single('pic'),async(req,res)=>{
-try {
-    await userSchema.validateAsync(req.body);
-    const {name,pic,email,password}=req.body;
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).send({ status: 400, msg: 'User already exists' });
-    }
-    
+router.post('/signup', upload.single('pic'), async (req, res) => {
+  try {
+      await userSchema.validateAsync(req.body);
+      const { name, email, password } = req.body;
 
-    const hashPass=await bcrypt.hash(password,10);
-     
-    fs.readdirSync('images/').forEach(file=>{
-        cloudinary.v2.uploader.upload(`images/${file}`,
- async function(error, result) {
-    fs.remove(`images/${file}`,err=>{
-        if(err) return console.error(err);
-        console.log("Success");
-    })
-    if(error){
-        return res.status(400).send({status:400,msg:error});
-    }
-    const userPic=result.url;
-    const newUser=new User({name,pic:userPic,email,password:hashPass});
-    const savedUser=await newUser.save();
-   return res.status(200).send({status:'200',data:savedUser});
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+          return res.status(400).send({ status: 400, msg: 'User already exists' });
+      }
 
-   });
-    })
-    
-} catch (error) {
-    return res.status(400).send({status:'400',error:error});
-}
-})
+      const hashPass = await bcrypt.hash(password, 10);
+
+      if (!req.file) {
+          return res.status(400).send({ status: 400, msg: 'Please upload an image' });
+      }
+
+      // Create the user in MongoDB
+      const newUser = new User({ name, email, password: hashPass });
+      const savedUser = await newUser.save();
+
+      // Upload the image to Cloudinary using the MongoDB ID as the public ID
+      const result = await cloudinary.v2.uploader.upload(req.file.path, {
+          public_id: savedUser._id.toString(), // Using MongoDB ID as the public ID
+      });
+
+      const userPic = result.secure_url;
+
+      // Update the user's pic field with the Cloudinary URL
+      savedUser.pic = userPic;
+      await savedUser.save();
+
+      return res.status(200).send({ status: '200', data: savedUser });
+  } catch (error) {
+      return res.status(400).send({ status: '400', error: error.message });
+  }
+});
 
 router.post('/login',async(req,res)=>{
+try {
+  const {email,password}=req.body;
+    const userFind=await User.findOne({email});
+    if (!userFind) {
+      return res.status(401).send({ status: '401', err: "User Not Found" });
+  }
+  const comparePass=await bcrypt.compare(password,userFind.password);
+  if (!comparePass) {
+    return res.status(401).send({ status: '401', err: "Incorrect Password" });
+}
+delete userFind.password;
+const token=jwt.sign({_id:userFind.id},"Zeeshi");
+return res.status(200).send({status:200,user:userFind,token:token});
 
-
+} catch (error) {
+  return res.status(400).send({status:400,error:error});
+  
+}
 
 
 })
